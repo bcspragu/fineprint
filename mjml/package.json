@@ -1,0 +1,12 @@
+{
+  "name": "postmark-inbound-mjml",
+  "version": "1.0.0",
+  "description": "MJML compilation for postmark-inbound",
+  "main": "compile-mjml.js",
+  "dependencies": {
+    "mjml": "^4.15.3"
+  },
+  "scripts": {
+    "compile-mjml": "node compile-mjml.js"
+  }
+}
