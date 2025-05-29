@@ -7,46 +7,70 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type SearchService struct {
-	ID              int      `json:"id"`
-	Name            string   `json:"name"`
-	Slug            string   `json:"slug"`
-	URLs            []string `json:"urls"`
-	Rating          string   `json:"rating"`
-	IsComprehensive bool     `json:"is_comprehensive"`
-	CreatedAt       string   `json:"created_at"`
-	UpdatedAt       string   `json:"updated_at"`
+	ID int `json:"id"`
+
+	IsComprehensivelyReviewed bool `json:"is_comprehensively_reviewed"`
+
+	URLs      []string  `json:"urls"`
+	Name      string    `json:"name"`
+	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	Slug      string    `json:"slug"`
+	Rating    string    `json:"rating"` // Looks like A through F?
 }
 
 type Service struct {
-	ID        int        `json:"id"`
+	ID int `json:"id"`
+
+	IsComprehensivelyReviewed bool `json:"is_comprehensively_reviewed"`
+
 	Name      string     `json:"name"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
 	Slug      string     `json:"slug"`
-	URLs      []string   `json:"urls"`
 	Rating    string     `json:"rating"`
+	URLs      []string   `json:"urls"`
 	Image     string     `json:"image"`
 	Documents []Document `json:"documents"`
 	Points    []Point    `json:"points"`
 }
 
 type Document struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	Text      string `json:"text"`
-	ServiceID int    `json:"service_id"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Point struct {
-	ID          int    `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Reason      string `json:"reason"`
-	Status      string `json:"status"`
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+
+	Source   string `json:"source"`
+	Status   string `json:"status"`
+	Analysis string `json:"analysis"`
+	Case     *Case  `json:"case"`
+
+	DocumentID int `json:"document_id"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Case struct {
+	ID             int       `json:"id"`
+	Weight         int       `json:"weight"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	TopicID        int       `json:"topic_id"`
+	Classification string    `json:"classification"` // "good", "blocker", "neutral", "bad"
 }
 
 type SearchResponse struct {
