@@ -1,64 +1,74 @@
 <mjml>
+
   <mj-head>
-    <mj-title>{{.Subject}}</mj-title>
+    <mj-title>{{ .Subject }}</mj-title>
     <mj-attributes>
       <mj-all font-family="'Helvetica Neue', Arial, sans-serif"/>
     </mj-attributes>
   </mj-head>
+
   <mj-body>
     <mj-section>
       <mj-column>
-        <mj-text font-size="24px" font-weight="bold" align="center">
-          Policy Change Summary
-        </mj-text>
-        <mj-text font-size="18px" color="#666" align="center">
-          {{.Company}}
-        </mj-text>
+
+        <!-- TODO: Replace this URL -->
+        <mj-image width="100px" src="https://pub.bsprague.com/BMW1V7IGrlcsW1XGNkpoTkmQ.png"></mj-image>
+        <mj-text align="center" font-size="28px">Fineprint.help</mj-text>
+
+        <mj-divider border-color="#a0a0a0" border-width="2px"></mj-divider>
+
+        <mj-text align="center" font-size="18px">Report for {{ .Company }}'s {{ .PolicyType }}</mj-text>
+
       </mj-column>
     </mj-section>
 
-    <mj-section background-color="#f4f4f4" padding="20px">
-      <mj-column>
-        <mj-text font-size="16px">
-          <strong>Policy Type:</strong> {{.PolicyType}}
-        </mj-text>
-        <mj-text font-size="16px">
-          <strong>Classification Confidence:</strong> {{.Confidence}}
-        </mj-text>
-      </mj-column>
-    </mj-section>
 
-    {{if .HasToSDR}}
-    <mj-section>
-      <mj-column>
-        <mj-text font-size="18px" font-weight="bold">
-          ToS;DR Analysis Available
-        </mj-text>
-        {{range .ToSDRServices}}
-        <mj-text font-size="14px" padding-bottom="10px">
-          <strong>{{.Name}}</strong> (Rating: {{.Rating}})
-          {{if .IsComprehensive}}<br/><em>Comprehensive review available</em>{{end}}
-          <br/><a href="https://tosdr.org/en/service/{{.ID}}">View analysis</a>
-        </mj-text>
-        {{end}}
-      </mj-column>
-    </mj-section>
-    {{else}}
-    <mj-section>
-      <mj-column>
-        <mj-text font-size="16px" color="#666">
-          No existing ToS;DR analysis found for this company.
-        </mj-text>
-      </mj-column>
-    </mj-section>
-    {{end}}
+    {{ with .DeltaReport }}
+    <!-- Delta Report Text -->
+    <mj-section background-color="#fafafa" padding="16px">
+  	  <mj-column>
+          <mj-text align="left" font-size="18px">Here's what changed between {{ .PrevDate }} and {{ .YourDate }}:
+          </mj-text>
 
-    <mj-section background-color="#e8e8e8" padding="15px">
-      <mj-column>
-        <mj-text font-size="12px" color="#666" align="center">
-          This summary was generated automatically by analyzing your forwarded policy change email.
-        </mj-text>
-      </mj-column>
+          <mj-spacer></mj-spacer>
+  
+          {{ range .Points }}
+            <mj-text align="left" font-size="18px">&emsp;- {{.}}</mj-text>
+          {{ end }}
+  	  </mj-column>
     </mj-section>
+    {{ else with .SummaryReport }}
+      <!-- Summary Report Text -->
+      <mj-section background-color="#fafafa" padding="16px">
+    	  <mj-column>
+          <mj-text align="left" font-size="18px">We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ .PolicyType }}:
+          </mj-text>
+
+          <mj-spacer></mj-spacer>
+
+          {{ range .Points }}
+            <mj-text align="left" font-size="18px">&emsp;- {{.}}</mj-text>
+          {{ end }}
+    	  </mj-column>
+      </mj-section>
+    {{ end }}
+
+
+    {{ with .ToSDR }}
+      <!-- ToS;DR Text -->
+      <mj-section background-color="white" padding="16px">
+	      <mj-column>
+            <mj-text align="left" font-size="18px">Here's what <mj-button href="https://tosdr.org">ToS;DR</mj-button> had to say about {{ $.Company }}'s policies overall:
+            </mj-text>
+
+            <mj-spacer></mj-spacer>
+
+            <!-- TODO: Set color based on {{ .Classification }} and use {{ .Source }} link-->
+            {{ range .Points }}
+              <mj-text align="left" font-size="18px">&emsp;- {{.}}</mj-text>
+            {{ end }}
+	      </mj-column>
+      </mj-section>
+    {{ end }}
   </mj-body>
 </mjml>
