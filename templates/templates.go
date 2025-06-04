@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"text/template"
+	"time"
 
 	"postmark-inbound/claude"
 	"postmark-inbound/tosdr"
@@ -15,7 +16,7 @@ import (
 	"golang.org/x/text/language"
 )
 
-//go:embed *.mjml
+//go:embed *.mjml *.txt
 var templateFiles embed.FS
 
 type EmailTemplateData struct {
@@ -29,8 +30,8 @@ type EmailTemplateData struct {
 }
 
 type DeltaReport struct {
-	PrevDate string
-	YourDate string
+	PrevDate time.Time
+	YourDate time.Time
 
 	Points []SummaryPoint
 }
@@ -53,25 +54,34 @@ type ToSDRPoint struct {
 	Classification string
 }
 
-func GenerateMJML(classification *claude.PolicyClassification, svc *tosdr.Service) (string, error) {
+type GenerateRequest struct {
+	Classification *claude.PolicyClassification
+	Service        *tosdr.Service
+	DeltaReport    *DeltaReport
+	SummaryReport  *SummaryReport
+}
+
+var title = cases.Title(language.English)
+
+func (gr *GenerateRequest) toEmailTemplateData() *EmailTemplateData {
+	return &EmailTemplateData{
+		Subject:       fmt.Sprintf("Policy Change Summary: %s", gr.Classification.Company),
+		Company:       gr.Classification.Company,
+		PolicyType:    title.String(strings.ReplaceAll(gr.Classification.PolicyType, "_", " ")),
+		DeltaReport:   gr.DeltaReport,
+		SummaryReport: gr.SummaryReport,
+		ToSDR:         toToSDR(gr.Service),
+	}
+}
+
+func GenerateMJML(tmplData *EmailTemplateData) (string, error) {
 	tmpl, err := template.ParseFS(templateFiles, "email.mjml")
 	if err != nil {
 		return "", fmt.Errorf("error parsing template: %v", err)
 	}
 
-	title := cases.Title(language.English)
-
-	data := EmailTemplateData{
-		Subject:       fmt.Sprintf("Policy Change Summary: %s", classification.Company),
-		Company:       classification.Company,
-		PolicyType:    title.String(strings.ReplaceAll(classification.PolicyType, "_", " ")),
-		DeltaReport:   &DeltaReport{},   // TODO: Pass in the right stuff so we know when to show this
-		SummaryReport: &SummaryReport{}, // TODO: Pass in the right stuff so we know when to show this
-		ToSDR:         toToSDR(svc),
-	}
-
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
+	if err := tmpl.Execute(&buf, tmplData); err != nil {
 		return "", fmt.Errorf("error executing template: %v", err)
 	}
 
@@ -111,16 +121,44 @@ func CompileMJMLToHTML(mjmlContent string) (string, error) {
 	return stdout.String(), nil
 }
 
-func GenerateHTMLEmail(classification *claude.PolicyClassification, tosDRResults *tosdr.SearchResponse) (string, error) {
-	mjmlContent, err := GenerateMJML(classification, tosDRResults)
+type Email struct {
+	HTMLBody string
+	TextBody string
+}
+
+func GenerateEmail(req *GenerateRequest) (*Email, error) {
+	tmplData := req.toEmailTemplateData()
+	mjmlContent, err := GenerateMJML(tmplData)
 	if err != nil {
-		return "", fmt.Errorf("error generating MJML: %v", err)
+		return nil, fmt.Errorf("error generating MJML: %w", err)
 	}
 
 	htmlContent, err := CompileMJMLToHTML(mjmlContent)
 	if err != nil {
-		return "", fmt.Errorf("error compiling MJML to HTML: %v", err)
+		return nil, fmt.Errorf("error compiling MJML to HTML: %w", err)
 	}
 
-	return htmlContent, nil
+	textContent, err := generateTextEmail(tmplData)
+	if err != nil {
+		return nil, fmt.Errorf("error generating text email: %w", err)
+	}
+
+	return &Email{
+		HTMLBody: htmlContent,
+		TextBody: textContent,
+	}, nil
+}
+
+func generateTextEmail(tmplData *EmailTemplateData) (string, error) {
+	tmpl, err := template.ParseFS(templateFiles, "email.txt")
+	if err != nil {
+		return "", fmt.Errorf("error parsing template: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, tmplData); err != nil {
+		return "", fmt.Errorf("error executing template: %v", err)
+	}
+
+	return buf.String(), nil
 }

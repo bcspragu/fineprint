@@ -8,8 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"postmark-inbound/htmlutil"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -106,8 +106,12 @@ func (c *Client) GetSnapshots(targetURL string) ([]Snapshot, error) {
 	return snapshots, nil
 }
 
-func (c *Client) LoadSnapshot(originalURL, timestamp string) (string, error) {
-	snapshotURL := fmt.Sprintf("http://web.archive.org/web/%s/%s", timestamp, originalURL)
+func formatTimestamp(ts time.Time) string {
+	return ts.Format("20060102150405")
+}
+
+func (c *Client) LoadSnapshot(originalURL string, timestamp time.Time) (string, error) {
+	snapshotURL := fmt.Sprintf("http://web.archive.org/web/%s/%s", formatTimestamp(timestamp), originalURL)
 
 	resp, err := c.HTTPClient.Get(snapshotURL)
 	if err != nil {
@@ -123,33 +127,12 @@ func (c *Client) LoadSnapshot(originalURL, timestamp string) (string, error) {
 		return "", fmt.Errorf("snapshot request failed with status: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	textContent, err := htmlutil.ExtractText(newWaybackToolbarStripper(resp.Body))
 	if err != nil {
-		return "", fmt.Errorf("failed to read snapshot content: %w", err)
+		return "", fmt.Errorf("failed to extract text from HTML: %w", err)
 	}
 
-	content := string(body)
-
-	content = c.removeWaybackToolbar(content)
-
-	return content, nil
-}
-
-func (c *Client) removeWaybackToolbar(content string) string {
-	startMarker := "<!-- BEGIN WAYBACK TOOLBAR INSERT -->"
-	endMarker := "<!-- END WAYBACK TOOLBAR INSERT -->"
-
-	start := strings.Index(content, startMarker)
-	if start == -1 {
-		return content
-	}
-
-	end := strings.Index(content, endMarker)
-	if end == -1 {
-		return content
-	}
-
-	return content[:start] + content[end+len(endMarker):]
+	return textContent, nil
 }
 
 func parseTimestamp(ts string) (time.Time, error) {
@@ -181,4 +164,89 @@ func parseTimestamp(ts string) (time.Time, error) {
 	}
 
 	return time.Date(yr, month, day, hr, min, sec, 0, time.UTC), nil
+}
+
+type waybackToolbarStripper struct {
+	reader      io.Reader
+	buffer      []byte
+	bufferPos   int
+	inToolbar   bool
+	startMarker []byte
+	endMarker   []byte
+	matchPos    int
+	endMatchPos int
+}
+
+func newWaybackToolbarStripper(reader io.Reader) *waybackToolbarStripper {
+	return &waybackToolbarStripper{
+		reader:      reader,
+		buffer:      make([]byte, 0, 8192),
+		startMarker: []byte("<!-- BEGIN WAYBACK TOOLBAR INSERT -->"),
+		endMarker:   []byte("<!-- END WAYBACK TOOLBAR INSERT -->"),
+	}
+}
+
+func (w *waybackToolbarStripper) Read(p []byte) (n int, err error) {
+	for n < len(p) {
+		if w.bufferPos >= len(w.buffer) {
+			readBuf := make([]byte, 4096)
+			readN, readErr := w.reader.Read(readBuf)
+			if readN > 0 {
+				w.buffer = append(w.buffer, readBuf[:readN]...)
+			}
+			if readErr != nil {
+				if readErr == io.EOF && w.bufferPos >= len(w.buffer) {
+					return n, io.EOF
+				} else if readErr != io.EOF {
+					return n, readErr
+				}
+			}
+			if w.bufferPos >= len(w.buffer) && readErr == io.EOF {
+				return n, io.EOF
+			}
+		}
+
+		currentByte := w.buffer[w.bufferPos]
+		w.bufferPos++
+
+		if w.inToolbar {
+			if w.endMatchPos < len(w.endMarker) && currentByte == w.endMarker[w.endMatchPos] {
+				w.endMatchPos++
+				if w.endMatchPos == len(w.endMarker) {
+					w.inToolbar = false
+					w.endMatchPos = 0
+				}
+			} else {
+				w.endMatchPos = 0
+				if currentByte == w.endMarker[0] {
+					w.endMatchPos = 1
+				}
+			}
+		} else {
+			if w.matchPos < len(w.startMarker) && currentByte == w.startMarker[w.matchPos] {
+				w.matchPos++
+				if w.matchPos == len(w.startMarker) {
+					w.inToolbar = true
+					w.matchPos = 0
+				}
+			} else {
+				if w.matchPos > 0 {
+					copy(p[n:], w.startMarker[:w.matchPos])
+					n += w.matchPos
+					w.matchPos = 0
+					if n >= len(p) {
+						w.bufferPos--
+						return n, nil
+					}
+				}
+				if currentByte == w.startMarker[0] {
+					w.matchPos = 1
+				} else {
+					p[n] = currentByte
+					n++
+				}
+			}
+		}
+	}
+	return n, nil
 }

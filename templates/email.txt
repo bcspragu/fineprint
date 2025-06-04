@@ -1,0 +1,30 @@
+Fineprint.help
+
+Report for {{ .Company }}'s {{ .PolicyType }}
+
+{{ with .DeltaReport -}}
+
+Here's what changed between {{ .PrevDate }} and {{ .YourDate }}:
+
+{{ range .Points }}
+- {{.}}
+{{ end }}
+
+{{- else with .SummaryReport -}}
+
+We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ .PolicyType }}:
+
+{{ range .Points }}
+- {{.}}
+{{ end }}
+
+{{- end }}
+
+{{ with .ToSDR -}}
+Here's what ToS;DR (https://tosdr.org) had to say about {{ $.Company }}'s policies overall:
+
+{{ range .Points }}
+- {{.}}
+{{ end }}
+
+{{- end }}

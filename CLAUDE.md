@@ -29,9 +29,9 @@ The workflow is:
 ## Features
 
 - [DONE] Make sure the email is something we can handle (e.g. a policy update)
-- [In-progress] Extract information about the policy update
+- [DONE] Extract information about the policy update
 - [DONE] Use the  ToS;DR API to see if this ToS has been summarized
-- [TODO] Load the changed entity (ToS, PP, etc)
-- [TODO] Load an old version (e.g. from archive.org)
-- [TODO] Diff them
-- [TODO] Have an LLM summarize the delta
+- [DONE] Load the changed entity (ToS, PP, etc)
+- [DONE] Load an old version (e.g. from archive.org)
+- [DONE] Diff them
+- [DONE] Have an LLM summarize the delta

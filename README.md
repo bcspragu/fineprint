@@ -7,5 +7,5 @@ A tool for determining what has changed in a company's legal agreement (ToS, Pri
 - [ ] Add LICENSE
 - [ ] Fill out README
 - [ ] Test end-to-end
-- [ ] Iterate on email format
-- [ ] Add text email response back
+- [x] Iterate on email format
+- [x] Add text email response back

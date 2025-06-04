@@ -14,14 +14,15 @@ import (
 	"time"
 
 	"github.com/peterbourgon/ff/v3"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"postmark-inbound/claude"
+	"postmark-inbound/diff"
+	"postmark-inbound/htmlutil"
 	"postmark-inbound/postmark"
 	"postmark-inbound/templates"
 	"postmark-inbound/tosdr"
 	"postmark-inbound/webarchive"
+	"slices"
 )
 
 func main() {
@@ -56,6 +57,10 @@ func run(args []string) error {
 
 	webarchiveClient := webarchive.NewClient(*archiveAccessKey, *archiveSecretKey)
 
+	if *replyFromEmail == "" {
+		return errors.New("REPLY_FROM_EMAIL not set, which is required for email sending")
+	}
+
 	handler := &Handler{
 		replyFromEmail:   *replyFromEmail,
 		postmarkToken:    *postmarkToken,
@@ -84,15 +89,11 @@ func textResponse(w http.ResponseWriter, msg string) {
 }
 
 func isIPAuthorized(ip string) bool {
-	for _, authorizedIP := range authorizedIPs {
-		if ip == authorizedIP {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(authorizedIPs, ip)
 }
 
 func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
+
 	requestIP := r.Header.Get("X-Forwarded-For")
 	if !isIPAuthorized(requestIP) {
 		http.Error(w, "Not found", http.StatusNotFound)
@@ -130,20 +131,12 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use heuristics and external APIs to come up with the policy we're looking at.
-	// TODO: Currently, we only load ToS;DR results if we didn't get a policy URL
-	// from the email/classification, we probably want that part regardless.
 	policyResult := h.comeUpWithAPolicyURL(classification)
 	if policyResult == nil {
 		log.Printf("We couldn't figure out a policy URL, aborting")
 		textResponse(w, "Email processed - no policy documents found - probably our fault")
 		return
 	}
-
-	// If we're here, we can start try loading an older version of the policy for
-	// comparison purposes.
-
-	var tosDRResults *tosdr.SearchResponse
-	var previousVersion string
 
 	// After thinking about the email format a bit, there's only ~two sections we need to think about:
 	//
@@ -156,36 +149,81 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	//
 	// 1. Run classification
 	// 2. If we got a policy URL, try to load that directly + via web archive
+	// 3. Load the previous version
 
-	// Try to get legal document from first service and load previous version
-	if tosDRService != nil {
-		previousVersion, err = loadPreviousLegalDocument(tosDRService, &email, h.webarchiveClient, classification.PolicyType)
-		if err != nil {
-			log.Printf("Error loading previous version: %v", err)
-		} else if previousVersion != "" {
-			log.Printf("Successfully loaded previous version (%d chars)", len(previousVersion))
-		}
+	var (
+		deltaReport   *templates.DeltaReport
+		summaryReport *templates.SummaryReport
+	)
+
+	// Parse email date
+	emailDate, err := time.Parse(time.RFC1123Z, email.Date)
+	if err != nil {
+		log.Printf("Failed to parse email date %q, using current date: %v", email.Date, err)
+		emailDate = time.Now()
 	}
 
-	var textSummary string
-	if h.replyFromEmail == "" {
-		log.Printf("REPLY_FROM_EMAIL not set, skipping email response")
-	} else {
-		htmlSummary, err := templates.GenerateHTMLEmail(classification, tosDRResults)
-		if err != nil {
-			log.Printf("Error generating HTML email: %v", err)
-		}
-		textSummary = generateSummary(classification, tosDRResults)
-		subject := fmt.Sprintf("Policy Change Summary: %s", classification.Company)
-
-		messageID := postmark.GetMessageIDFromHeaders(&email)
-		err = postmark.SendEmailWithThreading(h.postmarkToken, h.replyFromEmail, email.From, subject, textSummary, htmlSummary, messageID, messageID)
-		if err != nil {
-			log.Printf("Error sending summary email: %v", err)
+	previousVersion, previousDate, err := h.loadPreviousLegalDocument(emailDate, policyResult.URL)
+	if err != nil {
+		if errors.Is(err, errNoPreviousSnapshots) {
+			log.Printf("No previous snapshots found for %q", policyResult.URL.String())
 		} else {
-			log.Printf("Summary email sent to %s", email.From)
+			log.Printf("Error loading previous version: %v", err)
+		}
+
+		// We have no previous version, populate the summary report
+		summaryRes, err := claude.GenerateSummaryReport(h.anthropicAPIKey, classification, policyResult.ResponseBody)
+		if err != nil {
+			log.Printf("Failed to generate summary report: %v", err)
+		} else {
+			summaryReport = &templates.SummaryReport{Points: toSummaryPoints(summaryRes.Highlights)}
 		}
 	}
+
+	if previousVersion != "" {
+		edits := diff.Strings(previousVersion, policyResult.ResponseBody)
+		policyDiff, err := diff.ToUnified("previous-policy", "current-policy", previousVersion, edits, 20 /* context lines */)
+		if err != nil {
+			log.Printf("Failed to diff two policy versions (generally shouldn't happen!): %v", err)
+		}
+
+		if policyDiff != "" {
+			diffSummary, err := claude.GenerateDiffReport(h.anthropicAPIKey, classification, policyDiff)
+			if err != nil {
+				log.Printf("Failed to generate diff report: %v", err)
+			} else {
+				deltaReport = &templates.DeltaReport{
+					PrevDate: previousDate,
+					YourDate: emailDate,
+					Points:   toSummaryPoints(diffSummary.Highlights),
+				}
+			}
+		}
+
+	}
+
+	genReq := &templates.GenerateRequest{
+		Classification: classification,
+		Service:        policyResult.Service,
+		DeltaReport:    deltaReport,
+		SummaryReport:  summaryReport,
+	}
+
+	emailContent, err := templates.GenerateEmail(genReq)
+	if err != nil {
+		log.Printf("Error generating HTML email: %v", err)
+	}
+	subject := fmt.Sprintf("Policy Change Summary: %s", classification.Company)
+
+	messageID := postmark.GetMessageIDFromHeaders(&email)
+	err = postmark.SendEmailWithThreading(h.postmarkToken, h.replyFromEmail, email.From, subject, emailContent.TextBody, emailContent.HTMLBody, messageID, messageID)
+	if err != nil {
+		log.Printf("Error sending summary email: %v", err)
+		textResponse(w, "Failed to send the summary email")
+		return
+	}
+
+	log.Printf("Summary email sent to %s", email.From)
 
 	w.WriteHeader(http.StatusOK)
 	if _, err := fmt.Fprintf(w, "Policy change email processed successfully"); err != nil {
@@ -193,39 +231,9 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func generateSummary(classification *claude.PolicyClassification, tosDRResults *tosdr.SearchResponse) string {
-	var textBody strings.Builder
-
-	title := cases.Title(language.English)
-
-	textBody.WriteString(fmt.Sprintf("Policy Change Summary for %s\n", classification.Company))
-	textBody.WriteString("=" + strings.Repeat("=", len("Policy Change Summary for "+classification.Company)) + "\n\n")
-
-	textBody.WriteString(fmt.Sprintf("Policy Type: %s\n", title.String(strings.ReplaceAll(classification.PolicyType, "_", " "))))
-	textBody.WriteString(fmt.Sprintf("Classification Confidence: %s\n\n", title.String(classification.Confidence)))
-
-	if tosDRResults != nil && len(tosDRResults.Services) > 0 {
-		textBody.WriteString("ToS;DR Analysis Available:\n")
-
-		for _, service := range tosDRResults.Services {
-			textBody.WriteString(fmt.Sprintf("• %s (Rating: %s)\n", service.Name, service.Rating))
-			if service.IsComprehensive {
-				textBody.WriteString("  Comprehensive review available\n")
-			}
-			textBody.WriteString(fmt.Sprintf("  View at: https://tosdr.org/en/service/%d\n", service.ID))
-		}
-	} else {
-		textBody.WriteString("No existing ToS;DR analysis found for this company.\n")
-	}
-
-	textBody.WriteString("\n---\nThis summary was generated automatically by analyzing your forwarded policy change email.")
-
-	return textBody.String()
-}
-
 type PolicyLoadResult struct {
 	URL          *url.URL
-	ResponseBody []byte
+	ResponseBody string
 
 	// Only if we loaded things from ToS;DR
 	Service *tosdr.Service
@@ -269,6 +277,7 @@ func (h *Handler) comeUpWithAPolicyURL(classification *claude.PolicyClassificati
 		},
 	}
 
+	var result *PolicyLoadResult
 	for _, st := range strategies {
 		// For each strategy, try to load the document and see what it do.
 		log.Printf("Trying strategy %q", st.name)
@@ -292,15 +301,21 @@ func (h *Handler) comeUpWithAPolicyURL(classification *claude.PolicyClassificati
 		}
 
 		// If we're here, I think we're good!
-		return &PolicyLoadResult{
-			URL:          policyURL,
-			ResponseBody: policyContents,
-			Service:      svc,
+		// The reason we structure it this way is that we want to load from ToS;DR every
+		// time, even if we use the policy URL from the classification result.
+		if result == nil {
+			result = &PolicyLoadResult{
+				URL:          policyURL,
+				ResponseBody: policyContents,
+			}
 		}
 	}
+	if result != nil {
+		result.Service = svc
+	}
 
-	// Just means we didn't find anything.
-	return nil
+	// Nil just means we didn't find anything.
+	return result
 }
 
 type Document struct {
@@ -359,62 +374,47 @@ func loadDocument(service *tosdr.SearchService, policyType string) (*Document, e
 	}, nil
 }
 
-func (h *Handler) loadPreviousLegalDocument(email *postmark.InboundEmail, documentURL *url.URL) (string, error) {
-	// Parse email date
-	emailDate, err := time.Parse(time.RFC1123Z, email.Date)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse email date: %w", err)
-	}
+var errNoPreviousSnapshots = errors.New("no previous snapshots found for given URL")
+
+func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *url.URL) (string, time.Time, error) {
+	// Only consider snapshots from a week before the email.
+	afterTS := emailDate.AddDate(0, 0, -7)
 
 	// Get snapshots from Internet Archive
 	snapshots, err := h.webarchiveClient.GetSnapshots(documentURL.String())
 	if err != nil {
-		return "", fmt.Errorf("failed to get snapshots: %w", err)
+		return "", time.Time{}, fmt.Errorf("failed to get snapshots: %w", err)
 	}
 
 	if len(snapshots) == 0 {
-		return "", fmt.Errorf("no snapshots found for URL: %s", documentURL)
+		return "", time.Time{}, errNoPreviousSnapshots
 	}
 
-	// Find the most recent snapshot that's older than the email date
+	// Find the most recent snapshot that's older than our target date, a bit before
+	// the email was sent.
 	var bestSnapshot *webarchive.Snapshot
 	for _, snapshot := range snapshots {
-		// Parse snapshot timestamp (format: YYYYMMDDhhmmss)
-		snapshotTime, err := time.Parse("20060102150405", snapshot.Timestamp)
-		if err != nil {
-			log.Printf("Failed to parse snapshot timestamp %s: %v", snapshot.Timestamp, err)
-			continue
-		}
+		ts := snapshot.Timestamp
 
-		// Only consider snapshots older than the email date
-		if snapshotTime.Before(emailDate) {
-			if bestSnapshot == nil || snapshotTime.After(getBestSnapshotTime(bestSnapshot)) {
+		if ts.Before(afterTS) {
+			if bestSnapshot == nil || ts.After(bestSnapshot.Timestamp) {
 				bestSnapshot = &snapshot
 			}
 		}
 	}
 
 	if bestSnapshot == nil {
-		return "", fmt.Errorf("no snapshots found older than email date %s", emailDate.Format(time.RFC3339))
+		return "", time.Time{}, errNoPreviousSnapshots
 	}
 
 	log.Printf("Using snapshot from %s for URL %s", bestSnapshot.Timestamp, documentURL)
 
-	// Load the snapshot content
-	content, err := webarchiveClient.LoadSnapshot(documentURL, bestSnapshot.Timestamp)
+	content, err := h.webarchiveClient.LoadSnapshot(documentURL.String(), bestSnapshot.Timestamp)
 	if err != nil {
-		return "", fmt.Errorf("failed to load snapshot: %w", err)
+		return "", time.Time{}, fmt.Errorf("failed to load snapshot: %w", err)
 	}
 
-	return content, nil
-}
-
-func getBestSnapshotTime(snapshot *webarchive.Snapshot) time.Time {
-	t, err := time.Parse("20060102150405", snapshot.Timestamp)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
+	return content, bestSnapshot.Timestamp, nil
 }
 
 func (h *Handler) maybeGetSearchService(companyName string) (*tosdr.SearchService, error) {
@@ -436,16 +436,16 @@ func (h *Handler) maybeGetSearchService(companyName string) (*tosdr.SearchServic
 	log.Printf("Found %d ToS;DR services for %s:", len(tosDRResults.Services), companyName)
 	for _, service := range tosDRResults.Services {
 		log.Printf("  - %s (Rating: %s, ID: %d, Comprehensive: %t)",
-			service.Name, service.Rating, service.ID, service.IsComprehensive)
+			service.Name, service.Rating, service.ID, service.IsComprehensivelyReviewed)
 	}
 
 	return &tosDRResults.Services[0], nil
 }
 
-func getBody(u *url.URL) ([]byte, error) {
+func getBody(u *url.URL) (string, error) {
 	resp, err := http.Get(u.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to load %q: %w", u.String(), err)
+		return "", fmt.Errorf("failed to load %q: %w", u.String(), err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -453,11 +453,18 @@ func getBody(u *url.URL) ([]byte, error) {
 		}
 	}()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := htmlutil.ExtractText(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return "", fmt.Errorf("failed to extract text from HTML body: %w", err)
 	}
 
-	// TODO: Probably just extract the <body> element, I can't think of why we'd need anything else.
 	return body, nil
+}
+
+func toSummaryPoints(points []string) []templates.SummaryPoint {
+	out := make([]templates.SummaryPoint, 0, len(points))
+	for _, p := range points {
+		out = append(out, templates.SummaryPoint{Text: p})
+	}
+	return out
 }
