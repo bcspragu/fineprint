@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 )
 
 type Message struct {
@@ -35,8 +34,8 @@ type Request struct {
 
 type Response struct {
 	Content []struct {
-		Text string `json:"text"`
-		Type string `json:"type"`
+		Type  string          `json:"type"`
+		Input json.RawMessage `json:"input"`
 	} `json:"content"`
 }
 
@@ -131,7 +130,8 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 `, pc.Company, pc.PolicyURL, pc.PolicyType, textBody)
 
 	reqBody := &Request{
-		Model: "claude-sonnet-4-20250514",
+		Model:     "claude-sonnet-4-20250514",
+		MaxTokens: 10000,
 		Tools: []Tool{
 			{
 				Name:        "extract_highlights",
@@ -166,7 +166,9 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 }
 
 func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff string) (*DiffSummary, error) {
-	prompt := fmt.Sprintf(`Analyze the unified diff of previous and current versions of the company document and explain the changes (focusing on those that are important to an end-user) as a series of points:
+	prompt := fmt.Sprintf(`Analyze the unified diff of previous and current versions of the company document and explain the changes (focusing on those that are important to an end-user) as a series of points.
+
+DO NOT mention any diffs that involve links changing from Web Archive to the company's site, that's an artifact of our analysis pipeline and SHOULD NOT be mentioned to the user.
 
 <company>%s</company>
 
@@ -180,7 +182,8 @@ func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff str
 `, pc.Company, pc.PolicyURL, pc.PolicyType, unifiedDiff)
 
 	reqBody := &Request{
-		Model: "claude-sonnet-4-20250514",
+		Model:     "claude-sonnet-4-20250514",
+		MaxTokens: 10000,
 		Tools: []Tool{
 			{
 				Name:        "extract_highlights",
@@ -276,7 +279,7 @@ Subject: %s
 						},
 						"policy_url": {
 							Type:        StringType,
-							Description: "URL where the updated policy can be accessed",
+							Description: "Valid HTTP(S) URL where the policy can be accessed, leave blank if none is found in the email",
 						},
 					},
 					Required: []string{
@@ -339,12 +342,9 @@ func issueRequest[T any](apiKey string, apiReq *Request) (*T, error) {
 		return nil, fmt.Errorf("empty response from Claude")
 	}
 
-	responseText := claudeResp.Content[0].Text
-	responseText = strings.TrimSpace(responseText)
-
 	var result T
-	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
-		return nil, fmt.Errorf("error parsing classification JSON: %v", err)
+	if err := json.Unmarshal(claudeResp.Content[0].Input, &result); err != nil {
+		return nil, fmt.Errorf("error parsing JSON: %v", err)
 	}
 
 	return &result, nil

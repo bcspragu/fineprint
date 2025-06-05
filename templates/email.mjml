@@ -33,7 +33,7 @@
           <mj-spacer></mj-spacer>
   
           {{ range .Points }}
-            <mj-text align="left" font-size="18px">&emsp;- {{.}}</mj-text>
+            <mj-text align="left" font-size="18px">&emsp;- {{.Text}}</mj-text>
           {{ end }}
   	  </mj-column>
     </mj-section>
@@ -41,13 +41,13 @@
       <!-- Summary Report Text -->
       <mj-section background-color="#fafafa" padding="16px">
     	  <mj-column>
-          <mj-text align="left" font-size="18px">We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ .PolicyType }}:
+          <mj-text align="left" font-size="18px">We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ $.PolicyType }}:
           </mj-text>
 
           <mj-spacer></mj-spacer>
 
           {{ range .Points }}
-            <mj-text align="left" font-size="18px">&emsp;- {{.}}</mj-text>
+            <mj-text align="left" font-size="18px">&emsp;- {{.Text}}</mj-text>
           {{ end }}
     	  </mj-column>
       </mj-section>
@@ -63,9 +63,9 @@
 
             <mj-spacer></mj-spacer>
 
-            <!-- TODO: Set color based on {{ .Classification }} and use {{ .Source }} link-->
             {{ range .Points }}
-              <mj-text align="left" font-size="18px">&emsp;- {{.}}</mj-text>
+              <!-- TODO: Set color based on {{ .Classification }} and use {{ .Source }} link-->
+              <mj-text align="left" font-size="18px">&emsp;- {{.Title}}</mj-text>
             {{ end }}
 	      </mj-column>
       </mj-section>

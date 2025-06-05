@@ -1,3 +1,4 @@
 .aider.*
 postmark-inbound
 frpc.ini
+node_modules

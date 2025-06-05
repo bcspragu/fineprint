@@ -24,7 +24,7 @@ func NewClient(accessKey, secretKey string) *Client {
 		AccessKey: accessKey,
 		SecretKey: secretKey,
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 	}
 }
@@ -39,7 +39,7 @@ type Snapshot struct {
 
 func (c *Client) GetSnapshots(targetURL string) ([]Snapshot, error) {
 	encodedURL := url.QueryEscape(targetURL)
-	apiURL := fmt.Sprintf("http://web.archive.org/cdx/search/cdx?url=%s&fl=timestamp,mimetype,statuscode,digest,length&output=json", encodedURL)
+	apiURL := fmt.Sprintf("http://web.archive.org/cdx/search/cdx?url=%s&fl=timestamp,mimetype,statuscode,digest,length&output=json&fastLatest=true&limit=-10", encodedURL)
 
 	resp, err := c.HTTPClient.Get(apiURL)
 	if err != nil {
@@ -84,23 +84,27 @@ func (c *Client) GetSnapshots(targetURL string) ([]Snapshot, error) {
 	snapshots := make([]Snapshot, 0, len(rawData)-1)
 	for i := 1; i < len(rawData); i++ {
 		row := rawData[i]
-		if len(row) >= 5 {
-			ts, err := parseTimestamp(row[0])
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse IA timestamp %q: %w", row[0], err)
-			}
-			snapshot := Snapshot{
-				Timestamp:  ts,
-				MimeType:   row[1],
-				StatusCode: parse(row[2]),
-				Digest:     row[3],
-				Length:     parse(row[4]),
-			}
-			if rErr != nil {
-				return nil, fmt.Errorf("failed to parse date string: %w", rErr)
-			}
-			snapshots = append(snapshots, snapshot)
+		if len(row) < 5 {
+			continue
 		}
+		if row[2] == "-" {
+			continue
+		}
+		ts, err := parseTimestamp(row[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse IA timestamp %q: %w", row[0], err)
+		}
+		snapshot := Snapshot{
+			Timestamp:  ts,
+			MimeType:   row[1],
+			StatusCode: parse(row[2]),
+			Digest:     row[3],
+			Length:     parse(row[4]),
+		}
+		if rErr != nil {
+			return nil, fmt.Errorf("failed to parse date string: %w", rErr)
+		}
+		snapshots = append(snapshots, snapshot)
 	}
 
 	return snapshots, nil

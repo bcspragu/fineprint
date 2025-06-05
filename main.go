@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/peterbourgon/ff/v3"
 
 	"postmark-inbound/claude"
@@ -44,8 +45,11 @@ func run(args []string) error {
 	var (
 		addr            = fs.String("addr", ":8080", "Address to listen on")
 		replyFromEmail  = fs.String("reply-from-email", "", "Email address to send replies from")
-		postmarkToken   = fs.String("postmark-server-token", "", "Postmark server token")
 		anthropicAPIKey = fs.String("anthropic-api-key", "", "Anthropic API key")
+
+		postmarkToken           = fs.String("postmark-server-token", "", "Postmark server token")
+		postmarkWebhookUsername = fs.String("postmark-webhook-username", "", "The basic auth username we'll receive from Postmark")
+		postmarkWebhookPassword = fs.String("postmark-webhook-password", "", "The basic auth password we'll receive from Postmark")
 
 		archiveAccessKey = fs.String("archive-access-key", "", "Internet Archive access key")
 		archiveSecretKey = fs.String("archive-secret-key", "", "Internet Archive secret key")
@@ -63,9 +67,12 @@ func run(args []string) error {
 
 	handler := &Handler{
 		replyFromEmail:   *replyFromEmail,
-		postmarkToken:    *postmarkToken,
 		anthropicAPIKey:  *anthropicAPIKey,
 		webarchiveClient: webarchiveClient,
+
+		postmarkToken:           *postmarkToken,
+		postmarkWebhookUsername: *postmarkWebhookUsername,
+		postmarkWebhookPassword: *postmarkWebhookPassword,
 	}
 
 	http.HandleFunc("/webhook", handler.handleInboundEmail)
@@ -78,8 +85,13 @@ func run(args []string) error {
 }
 
 type Handler struct {
-	replyFromEmail, postmarkToken, anthropicAPIKey string
-	webarchiveClient                               *webarchive.Client
+	replyFromEmail   string
+	anthropicAPIKey  string
+	webarchiveClient *webarchive.Client
+
+	postmarkToken           string
+	postmarkWebhookUsername string
+	postmarkWebhookPassword string
 }
 
 func textResponse(w http.ResponseWriter, msg string) {
@@ -88,14 +100,36 @@ func textResponse(w http.ResponseWriter, msg string) {
 	}
 }
 
-func isIPAuthorized(ip string) bool {
-	return slices.Contains(authorizedIPs, ip)
+func isIPAuthorized(ips string) bool {
+	for ip := range strings.SplitSeq(ips, ",") {
+		if slices.Contains(authorizedIPs, strings.TrimSpace(ip)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
+	user, pass, ok := r.BasicAuth()
+	if !ok {
+		log.Println("No basic auth in request")
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if h.postmarkWebhookUsername != user {
+		log.Printf("Basic auth username %q was incorrect", user)
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if h.postmarkWebhookPassword != pass {
+		log.Printf("Basic auth password %q was incorrect", pass)
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
 
-	requestIP := r.Header.Get("X-Forwarded-For")
-	if !isIPAuthorized(requestIP) {
+	requestIPs := r.Header.Get("X-Forwarded-For")
+	if !isIPAuthorized(requestIPs) {
+		log.Printf("None of request IPs %q was authorized", requestIPs)
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
@@ -157,7 +191,7 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Parse email date
-	emailDate, err := time.Parse(time.RFC1123Z, email.Date)
+	emailDate, err := parseEmailDate(email.Date)
 	if err != nil {
 		log.Printf("Failed to parse email date %q, using current date: %v", email.Date, err)
 		emailDate = time.Now()
@@ -212,6 +246,8 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	emailContent, err := templates.GenerateEmail(genReq)
 	if err != nil {
 		log.Printf("Error generating HTML email: %v", err)
+		textResponse(w, "Failed to generate the summary email")
+		return
 	}
 	subject := fmt.Sprintf("Policy Change Summary: %s", classification.Company)
 
@@ -381,7 +417,10 @@ func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *ur
 	afterTS := emailDate.AddDate(0, 0, -7)
 
 	// Get snapshots from Internet Archive
-	snapshots, err := h.webarchiveClient.GetSnapshots(documentURL.String())
+	dURL := *documentURL
+	// Remove query parameters, the WebArchive API doesn't like them
+	dURL.RawQuery = ""
+	snapshots, err := h.webarchiveClient.GetSnapshots(dURL.String())
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to get snapshots: %w", err)
 	}
@@ -467,4 +506,23 @@ func toSummaryPoints(points []string) []templates.SummaryPoint {
 		out = append(out, templates.SummaryPoint{Text: p})
 	}
 	return out
+}
+
+func parseEmailDate(dt string) (time.Time, error) {
+	formats := []string{
+		"Mon, 02 Jan 2006 15:04:05 -0700", // is time.RFC1123Z, but we put it here to show all the permutations we try.
+		"Mon, 2 Jan 2006 15:04:05 -0700",
+	}
+
+	var rErr error
+	for _, format := range formats {
+		emailDate, err := time.Parse(format, dt)
+		if err != nil {
+			rErr = multierror.Append(rErr, err)
+			continue
+		}
+		return emailDate, nil
+	}
+
+	return time.Time{}, rErr
 }

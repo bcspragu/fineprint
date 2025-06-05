@@ -7,15 +7,15 @@ Report for {{ .Company }}'s {{ .PolicyType }}
 Here's what changed between {{ .PrevDate }} and {{ .YourDate }}:
 
 {{ range .Points }}
-- {{.}}
+- {{.Text}}
 {{ end }}
 
 {{- else with .SummaryReport -}}
 
-We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ .PolicyType }}:
+We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ $.PolicyType }}:
 
 {{ range .Points }}
-- {{.}}
+- {{.Text}}
 {{ end }}
 
 {{- end }}
@@ -24,7 +24,7 @@ We couldn't find an older version of the policy for comparison, so here's a summ
 Here's what ToS;DR (https://tosdr.org) had to say about {{ $.Company }}'s policies overall:
 
 {{ range .Points }}
-- {{.}}
+- {{.Title}}
 {{ end }}
 
 {{- end }}
