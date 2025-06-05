@@ -126,9 +126,14 @@ func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff str
 		unifiedDiff = unifiedDiff[:50000]
 	}
 
-	prompt := fmt.Sprintf(`Analyze the unified diff of previous and current versions of the company document and explain the changes (focusing on those that are important to an end-user) as a series of points.
+	prompt := fmt.Sprintf(`Analyze the unified diff of previous and current versions of the company document and explain the changes as a series of points. Some guidelines:
 
-DO NOT mention any diffs that involve links changing from Web Archive to the company's site, that's an artifact of our analysis pipeline and SHOULD NOT be mentioned to the user.
+- Focus on changes that are important to an end-user, e.g. changes to data collection and tracking
+- Don't mention things that aren't changing, where the policy is the functionally the same, even if the wording is different
+- DO NOT mention any diffs that involve links changing from Web Archive to the company's site
+	- That's an artifact of our analysis pipeline and SHOULD NOT be mentioned to the user.
+- Write in a clear and accessible way, avoiding legal jargon
+- If it makes sense to reference a section when talking about a change, reference it at the end
 
 <company>%s</company>
 
