@@ -54,21 +54,23 @@
     {{ end }}
 
 
-    {{ with .ToSDR }}
-      <!-- ToS;DR Text -->
-      <mj-section background-color="white" padding="16px">
-	      <mj-column>
-            <mj-text align="left" font-size="18px">Here's what <mj-button href="https://tosdr.org">ToS;DR</mj-button> had to say about {{ $.Company }}'s policies overall:
-            </mj-text>
+    {{ if and .ToSDR .ToSDR.Points }}
+      {{ with .ToSDR }}
+        <!-- ToS;DR Text -->
+        <mj-section background-color="white" padding="16px">
+  	      <mj-column>
+              <mj-text align="left" font-size="18px">Here's what <mj-button href="https://tosdr.org">ToS;DR</mj-button> had to say about {{ $.Company }}'s policies overall:
+              </mj-text>
 
-            <mj-spacer></mj-spacer>
+              <mj-spacer></mj-spacer>
 
-            {{ range .Points }}
-              <!-- TODO: Set color based on {{ .Classification }} and use {{ .Source }} link-->
-              <mj-text align="left" font-size="18px">&emsp;- {{.Title}}</mj-text>
-            {{ end }}
-	      </mj-column>
-      </mj-section>
+              {{ range .Points }}
+                <!-- TODO: Set color based on {{ .Classification }} and use {{ .Source }} link-->
+                <mj-text align="left" font-size="18px">&emsp;- {{.Title}}</mj-text>
+              {{ end }}
+  	      </mj-column>
+        </mj-section>
+      {{ end }}
     {{ end }}
   </mj-body>
 </mjml>

@@ -8,10 +8,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY main.go main.go
+COPY claude/ claude/
+COPY diff/ diff/
+COPY htmlutil/ htmlutil/
+COPY postmark/ postmark/
+COPY templates/ templates/
+COPY tosdr/ tosdr/
+COPY webarchive/ webarchive/
 
 # Build static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o postmark-inbound .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o fineprint .
 
 # Runtime stage, use latest LTS Node image
 FROM node:22-alpine
@@ -24,10 +31,10 @@ WORKDIR /app
 
 # Copy package.json and install Node dependencies
 COPY mjml/package.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
 # Copy the compiled Go binary
-COPY --from=builder /app/postmark-inbound .
+COPY --from=builder /app/fineprint .
 
 # Copy the Node.js script
 COPY mjml/compile-mjml.js ./mjml/compile-mjml.js
@@ -44,4 +51,4 @@ USER appuser
 EXPOSE 8080
 
 # Run the binary
-CMD ["./postmark-inbound"]
+ENTRYPOINT ["/app/fineprint"]
