@@ -14,8 +14,9 @@ curl -v \
 
 ## TODO
 
-- [ ] Add LICENSE
-- [ ] Fill out README
-- [ ] Test end-to-end
+- [ ] Add links to the previous and current policies
+- [x] Add LICENSE
+- [x] Fill out README
+- [x] Test end-to-end
 - [x] Iterate on email format
 - [x] Add text email response back

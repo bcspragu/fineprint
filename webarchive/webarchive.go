@@ -39,7 +39,7 @@ type Snapshot struct {
 
 func (c *Client) GetSnapshots(targetURL string) ([]Snapshot, error) {
 	encodedURL := url.QueryEscape(targetURL)
-	apiURL := fmt.Sprintf("http://web.archive.org/cdx/search/cdx?url=%s&fl=timestamp,mimetype,statuscode,digest,length&output=json&fastLatest=true&limit=-10", encodedURL)
+	apiURL := fmt.Sprintf("https://web.archive.org/cdx/search/cdx?url=%s&fl=timestamp,mimetype,statuscode,digest,length&output=json&fastLatest=true&limit=-10", encodedURL)
 
 	resp, err := c.HTTPClient.Get(apiURL)
 	if err != nil {
@@ -115,7 +115,9 @@ func formatTimestamp(ts time.Time) string {
 }
 
 func (c *Client) LoadSnapshot(originalURL string, timestamp time.Time) (string, error) {
-	snapshotURL := fmt.Sprintf("http://web.archive.org/web/%s/%s", formatTimestamp(timestamp), originalURL)
+	snapshotURL := fmt.Sprintf("https://web.archive.org/web/%s/%s", formatTimestamp(timestamp), originalURL)
+
+	log.Printf("Snapshot url %q", snapshotURL)
 
 	resp, err := c.HTTPClient.Get(snapshotURL)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 	"text/template"
-	"time"
 
 	"postmark-inbound/claude"
 	"postmark-inbound/tosdr"
@@ -30,8 +29,8 @@ type EmailTemplateData struct {
 }
 
 type DeltaReport struct {
-	PrevDate time.Time
-	YourDate time.Time
+	PrevDate string
+	YourDate string
 
 	Points []SummaryPoint
 }

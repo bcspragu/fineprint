@@ -156,7 +156,7 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Classification result: isPolicyChange=%t, type=%s, company=%s, confidence=%s, policy_url=%s",
-		classification.IsPolicyChange, classification.PolicyType, classification.Company, classification.Confidence, classification.PolicyType)
+		classification.IsPolicyChange, classification.PolicyType, classification.Company, classification.Confidence, classification.PolicyURL)
 
 	if !classification.IsPolicyChange {
 		log.Printf("Email is not a policy change notification, ignoring")
@@ -227,8 +227,8 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to generate diff report: %v", err)
 			} else {
 				deltaReport = &templates.DeltaReport{
-					PrevDate: previousDate,
-					YourDate: emailDate,
+					PrevDate: previousDate.Format(time.DateOnly),
+					YourDate: emailDate.Format(time.DateOnly),
 					Points:   toSummaryPoints(diffSummary.Highlights),
 				}
 			}
@@ -448,7 +448,7 @@ func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *ur
 
 	log.Printf("Using snapshot from %s for URL %s", bestSnapshot.Timestamp, documentURL)
 
-	content, err := h.webarchiveClient.LoadSnapshot(documentURL.String(), bestSnapshot.Timestamp)
+	content, err := h.webarchiveClient.LoadSnapshot(dURL.String(), bestSnapshot.Timestamp)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to load snapshot: %w", err)
 	}

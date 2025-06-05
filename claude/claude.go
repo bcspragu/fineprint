@@ -71,51 +71,6 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 - "This service may use your personal information for marketing purposes"
 - "The service uses social media cookies/pixels"
 - "Blocking first party cookies may limit your ability to use the service"
-- "The service provides information about how they intend to use your personal data"
-- "This service collects your IP address for location use"
-- "You can opt out of promotional communications"
-- "This service can share your personal information to third parties "
-- "The service provides information about how they collect personal data"
-- "The service reviews its privacy policy on a regular basis"
-- "The service will only respond to government requests that are reasonable"
-- "This service receives your location through GPS coordinates"
-- "Your profile is combined across various products"
-- "The service provides details about what kinds of personal information they collect"
-- "This service employs separate policies for different parts of the service"
-- "This service is only available to users over a certain age"
-- "Users agree not to use the service for illegal purposes"
-- "Instead of asking directly, this Service will assume your consent merely from your usage."
-- "This service does not force users into binding arbitration"
-- "Any liability on behalf of the service is limited to $10 000"
-- "You waive your right to a class action."
-- "This service can use your content for all their existing and future services"
-- "You maintain ownership of your content"
-- "You waive your moral rights"
-- "Third-party cookies are used for advertising"
-- "Do Not Track (DNT) headers are ignored and you are tracked anyway even if you set this header."
-- "You must create an account to use this service"
-- "Certain features maybe unavailable, depending on when you opened an account"
-- "Your information is only shared with third parties when given specific consent"
-- "Your account can be closed for several reasons"
-- "You will be notified about discontinuation of service(s), unless not possible"
-- "Two months of notice are given before closing your account"
-- "You have the right to leave this service at any time"
-- "Your data may be processed and stored anywhere in the world"
-- "You must provide your identifiable information"
-- "When the service wants to make a material change to its terms, you are notified at least 30 days in advance"
-- "There is a date of the last update of the agreements"
-- "You are responsible for maintaining the security of your account and for the activities on your account"
-- "Blocking cookies may limit your ability to use the service"
-- "Third parties may be involved in operating the service"
-- "Your biometric data is collected"
-- "The service uses your personal data to employ targeted third-party advertising"
-- "You can request access and deletion of personal data"
-- "This service uses third-party cookies for statistics"
-- "This service gathers information about you through third parties"
-- "The service collects many different types of personal data"
-- "This service may keep personal data after a request for erasure for business interests or legal obligations"
-- "You agree to defend, indemnify, and hold the service harmless in case of a claim related to your use of the service"
-- "This service still tracks you even if you opted out from tracking"
 </examples>
 
 <company>%s</company>
@@ -166,6 +121,11 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 }
 
 func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff string) (*DiffSummary, error) {
+	if len(unifiedDiff) > 50000 {
+		log.Printf("Trimming unified diff, which is %d bytes long", len(unifiedDiff))
+		unifiedDiff = unifiedDiff[:50000]
+	}
+
 	prompt := fmt.Sprintf(`Analyze the unified diff of previous and current versions of the company document and explain the changes (focusing on those that are important to an end-user) as a series of points.
 
 DO NOT mention any diffs that involve links changing from Web Archive to the company's site, that's an artifact of our analysis pipeline and SHOULD NOT be mentioned to the user.
