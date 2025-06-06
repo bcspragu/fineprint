@@ -2,6 +2,8 @@
 
 A tool for determining what has changed in a company's legal agreement (ToS, Privacy Policy, etc), built for [Postmark's Inbox Innovators challenge](https://postmarkapp.com/blog/announcing-the-postmark-challenge-inbox-innovators%20)
 
+More usage details at [Fineprint.help](https://fineprint.help)
+
 ## Local Testing
 
 ### Dependencies
@@ -60,7 +62,7 @@ docker run -it --rm \
   - Alternatively, chunk up the diff and reassemble it after
   - Though this could get arbitrarily expensive
 - [x] Add a landing page for the site
-- [ ] Deploy it
+- [x] Deploy it
 - [x] Add links to the previous and current policies
 - [x] Add a warning that summaries may be wrong and you should always dig in if it's important
 - [x] Add LICENSE
