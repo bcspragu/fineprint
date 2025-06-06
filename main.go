@@ -36,7 +36,7 @@ func main() {
 
 // See the Postmark JS example: https://github.com/activecampaign/postmark_webhooks/blob/master/server/main.js#L8
 // They authorize based on IP, as opposed to providing signatures we can verify
-var authorizedIPs = []string{"3.134.147.250", "50.31.156.6", "50.31.156.77", "18.217.206.57", "127.0.0.1"}
+var authorizedIPs = []string{"3.134.147.250", "50.31.156.6", "50.31.156.77", "18.217.206.57", "127.0.0.1", "10.244.0.1"}
 
 func run(args []string) error {
 	if len(args) == 0 {
