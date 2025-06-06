@@ -301,6 +301,9 @@ func (h *Handler) comeUpWithAPolicyURL(classification *claude.PolicyClassificati
 					log.Printf("Error getting ToS service: %v", err)
 					return ""
 				}
+				if tosDRService == nil {
+					return ""
+				}
 				// Can handle a nil `tosDRService`
 				doc, err := loadDocument(tosDRService, classification.PolicyType)
 				if err != nil {

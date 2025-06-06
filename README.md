@@ -4,11 +4,20 @@ A tool for determining what has changed in a company's legal agreement (ToS, Pri
 
 ## Local Testing
 
-Run the service with:
+### Dependencies
 
-```bash
-./scripts/run.sh
-```
+To run the service locally, you'll need all of the following:
+
+- A [Go](https://go.dev/) compiler (likely 1.24.x)
+- A [Node](https://nodejs.org/) environment (I'm using Node 22)
+  - `mjml` needs to be installed in this env, for formatting emails
+- Postmark credentials
+- Internet Archive keys
+- An Anthropic API key
+
+### Running
+
+`./scripts/run.sh` is a helper for running the service, but it assumes you have your credentials stored in `pass` under specific names.
 
 ```bash
 curl -v \
@@ -23,13 +32,13 @@ curl -v \
 - If the legal document has changed a lot, the diff may be very large and overflow our LLM context, so we trim it down to size.
   - This stops it from breaking, but means we might not be capturing all the changes.
 
-## Docker
+## Usage with Docker
 
 ```bash
 # Build the image
 docker build -t fineprint .
 
-# Run it
+# Run it, pulling secrets from `pass` in this example
 docker run -it --rm \
   -p 8080:8080 fineprint \
   --reply-from-email=app@fineprint.help \
@@ -43,6 +52,10 @@ docker run -it --rm \
 
 ## TODO
 
+- [ ] Follow redirects
+- [ ] Add rate-limiting
+  - Separately for sent emails and overall requests
+    - Because not all requests will send emails, and emails aren't super expensive but LLMs can be
 - [ ] Let the user know when we had to trim the diff down
   - Alternatively, chunk up the diff and reassemble it after
   - Though this could get arbitrarily expensive
