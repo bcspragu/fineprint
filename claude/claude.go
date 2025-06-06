@@ -3,10 +3,16 @@ package claude
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 )
+
+// InputByteLimit is the limit of how many characters we send to an LLM, to
+// avoid blowing out the context window (and our costs).
+const InputByteLimit = 150000
 
 type Message struct {
 	Role    string `json:"role"`
@@ -45,17 +51,37 @@ type PolicyClassification struct {
 	Company        string `json:"company"`
 	Confidence     string `json:"confidence"`
 	PolicyURL      string `json:"policy_url"`
+	Trimmed        bool
+}
+
+type PolicyHighlight struct {
+	Description    string `json:"description"`
+	Classification string `json:"classification"`
 }
 
 type PolicySummary struct {
-	Highlights []string `json:"highlights"`
+	Highlights []PolicyHighlight `json:"highlights"`
+	Trimmed    bool
+}
+
+type DiffHighlight struct {
+	Description    string `json:"description"`
+	Classification string `json:"classification"`
 }
 
 type DiffSummary struct {
-	Highlights []string `json:"highlights"`
+	Highlights []DiffHighlight `json:"highlights"`
+	Trimmed    bool
 }
 
 func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody string) (*PolicySummary, error) {
+	trimmed := false
+	if len(textBody) > InputByteLimit {
+		log.Printf("Trimming text body for summary, which is %d bytes long", len(textBody))
+		textBody = textBody[:InputByteLimit]
+		trimmed = true
+	}
+
 	prompt := fmt.Sprintf(`Analyze the text of the provided company document and highlight the details that are important to an end-user as a series of points, here are some examples from the ToS;DR service describing PayPal's various user agreements:
 
 <examples>
@@ -90,15 +116,26 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 		Tools: []Tool{
 			{
 				Name:        "extract_highlights",
-				Description: "Analyze the text of a company's user-facing legal documents and extract highlights that will be important to users",
+				Description: "Analyze the text of a company's user-facing legal documents and extract relevant details that will be important to users",
 				InputSchema: JSONSchema{
 					Type: ObjectType,
 					Properties: map[string]*JSONSchema{
 						"highlights": {
 							Type: ArrayType,
 							Items: &JSONSchema{
-								Type:        StringType,
-								Description: "An individual highlight to show to a user, ex 'The service collects many different types of personal data'",
+								Type:        ObjectType,
+								Description: "An individual highlight to show to a user, ex '[neutral] The service collects many different types of personal data'",
+								Properties: map[string]*JSONSchema{
+									"description": {
+										Type:        StringType,
+										Description: "A description of the highlight, ex 'The service collects many different types of personal data'",
+									},
+									"classification": {
+										Type:        StringType,
+										Description: "How this policy decision affects users.",
+										Enum:        []any{"good", "neutral", "bad", "blocker"},
+									},
+								},
 							},
 						},
 					},
@@ -117,13 +154,20 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 		},
 	}
 
-	return issueRequest[PolicySummary](apiKey, reqBody)
+	ps, err := issueRequest[PolicySummary](apiKey, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	ps.Trimmed = trimmed
+	return ps, nil
 }
 
 func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff string) (*DiffSummary, error) {
-	if len(unifiedDiff) > 50000 {
+	trimmed := false
+	if len(unifiedDiff) > InputByteLimit {
 		log.Printf("Trimming unified diff, which is %d bytes long", len(unifiedDiff))
-		unifiedDiff = unifiedDiff[:50000]
+		unifiedDiff = unifiedDiff[:InputByteLimit]
+		trimmed = true
 	}
 
 	prompt := fmt.Sprintf(`Analyze the unified diff of previous and current versions of the company document and explain the changes as a series of points. Some guidelines:
@@ -159,8 +203,19 @@ func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff str
 						"highlights": {
 							Type: ArrayType,
 							Items: &JSONSchema{
-								Type:        StringType,
-								Description: "An individual highlight to show to a user, ex 'The service now stores your data for 30 days (up from 7 days)'",
+								Type:        ObjectType,
+								Description: "An individual change to show to a user, ex '[good] The service no longer requires registration to use'",
+								Properties: map[string]*JSONSchema{
+									"description": {
+										Type:        StringType,
+										Description: "A description of the highlight, ex 'The service is now available via Tor'",
+									},
+									"classification": {
+										Type:        StringType,
+										Description: "How this change in policy affects users.",
+										Enum:        []any{"good", "neutral", "bad", "blocker"},
+									},
+								},
 							},
 						},
 					},
@@ -179,7 +234,12 @@ func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff str
 		},
 	}
 
-	return issueRequest[DiffSummary](apiKey, reqBody)
+	ds, err := issueRequest[DiffSummary](apiKey, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	ds.Trimmed = trimmed
+	return ds, nil
 }
 
 func ClassifyPolicyChange(apiKey, subject, textBody, htmlBody string) (*PolicyClassification, error) {
@@ -187,32 +247,36 @@ func ClassifyPolicyChange(apiKey, subject, textBody, htmlBody string) (*PolicyCl
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY not provided")
 	}
 
-	emailContent := ""
+	textBody, htmlBody = strings.TrimSpace(textBody), strings.TrimSpace(htmlBody)
+	if textBody == "" && htmlBody == "" {
+		return nil, errors.New("no email content provided")
+	}
+
+	var emailContent strings.Builder
 	if textBody != "" {
-		emailContent += fmt.Sprintf("Text Body:\n%s\n\n", textBody)
+		emailContent.WriteString("<text_body>")
+		emailContent.WriteString(textBody)
+		emailContent.WriteString("</text_body>")
 	}
 	if htmlBody != "" {
-		emailContent += fmt.Sprintf("HTML Body:\n%s\n\n", htmlBody)
+		emailContent.WriteString("<html_body>")
+		emailContent.WriteString(htmlBody)
+		emailContent.WriteString("</html_body>")
 	}
-	if emailContent == "" {
-		emailContent = "No email body content available"
+
+	trimmed := false
+	content := emailContent.String()
+	if len(content) > InputByteLimit {
+		log.Printf("Trimming email content, which is %d bytes long", len(content))
+		content = content[:InputByteLimit]
+		trimmed = true
 	}
 
 	prompt := fmt.Sprintf(`Analyze this email to determine if it's a company notifying about policy changes (Terms of Service, Privacy Policy, User Agreement, etc.).
 
-Subject: %s
+<subject>%s</subject>
 
-%s`, subject, emailContent)
-
-	// Old prompt before tool call
-	_ = `Respond with only a JSON object in this format:
-	{
-	  "is_policy_change": true/false,
-	  "policy_type": "terms_of_service" | "privacy_policy" | "user_agreement" | "other" | "",
-	  "company": "company name or empty string",
-	  "confidence": "high" | "medium" | "low",
-	  "policy_url": "string"
-	}`
+%s`, subject, content)
 
 	reqBody := &Request{
 		Model:     "claude-3-5-haiku-20241022",
@@ -265,7 +329,12 @@ Subject: %s
 		},
 	}
 
-	return issueRequest[PolicyClassification](apiKey, reqBody)
+	pc, err := issueRequest[PolicyClassification](apiKey, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	pc.Trimmed = trimmed
+	return pc, nil
 }
 
 func issueRequest[T any](apiKey string, apiReq *Request) (*T, error) {

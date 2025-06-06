@@ -32,15 +32,22 @@ type DeltaReport struct {
 	PrevDate string
 	YourDate string
 
-	Points []SummaryPoint
+	PrevURL string
+	YourURL string
+
+	Points  []SummaryPoint
+	Trimmed bool
 }
 
 type SummaryReport struct {
-	Points []SummaryPoint
+	Points    []SummaryPoint
+	PolicyURL string
+	Trimmed   bool
 }
 
 type SummaryPoint struct {
-	Text string
+	Text           string
+	Classification string
 }
 
 type ToSDR struct {

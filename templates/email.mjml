@@ -11,8 +11,7 @@
     <mj-section>
       <mj-column>
 
-        <!-- TODO: Replace this URL -->
-        <mj-image width="100px" src="https://pub.bsprague.com/BMW1V7IGrlcsW1XGNkpoTkmQ.png"></mj-image>
+        <mj-image width="100px" src="https://fineprint.help/fineprint.png"></mj-image>
         <mj-text align="center" font-size="28px">Fineprint.help</mj-text>
 
         <mj-divider border-color="#a0a0a0" border-width="2px"></mj-divider>
@@ -27,13 +26,22 @@
     <!-- Delta Report Text -->
     <mj-section background-color="#fafafa" padding="16px">
   	  <mj-column>
-          <mj-text align="left" font-size="18px">Here's what changed between {{ .PrevDate }} and {{ .YourDate }}:
+          <mj-text align="left" font-size="18px">Here's what changed between <a href="{{.PrevURL}}">{{ .PrevDate }}</a> and <a href="{{.YourURL}}">{{ .YourDate }}</a>:
           </mj-text>
 
           <mj-spacer></mj-spacer>
   
           {{ range .Points }}
-            <mj-text align="left" font-size="18px">&emsp;- {{.Text}}</mj-text>
+            <mj-social align="left" font-size="14px" icon-padding="8px" line-height="1.1">
+              <mj-social-element src="https://fineprint.help/{{.Classification}}.png">
+                {{.Text}}
+              </mj-social-element>
+            </mj-social>
+          {{ end }}
+
+          {{ if .Trimmed }}
+            <mj-spacer></mj-spacer>
+            <mj-text align="left" font-size="16px" color="#d97706" background-color="#fef3c7" padding="12px" border-radius="6px">⚠️ Heads up! The policy changes were too large for us to fully analyze, and were truncated. Important changes may be missing.</mj-text>
           {{ end }}
   	  </mj-column>
     </mj-section>
@@ -41,13 +49,23 @@
       <!-- Summary Report Text -->
       <mj-section background-color="#fafafa" padding="16px">
     	  <mj-column>
-          <mj-text align="left" font-size="18px">We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ $.PolicyType }}:
+          <mj-text align="left" font-size="18px">
+            We couldn't find an older version of the policy for comparison, so here's a summary of <a href="{{.PolicyURL}}">{{ $.Company }}'s {{ $.PolicyType }}</a>:
           </mj-text>
 
           <mj-spacer></mj-spacer>
 
           {{ range .Points }}
-            <mj-text align="left" font-size="18px">&emsp;- {{.Text}}</mj-text>
+            <mj-social align="left" font-size="14px" icon-padding="8px" line-height="1.1">
+              <mj-social-element src="https://fineprint.help/{{.Classification}}.png">
+                {{.Text}}
+              </mj-social-element>
+            </mj-social>
+          {{ end }}
+
+          {{ if .Trimmed }}
+            <mj-spacer></mj-spacer>
+            <mj-text align="left" font-size="16px" color="#d97706" background-color="#fef3c7" padding="12px" border-radius="6px">⚠️ Heads up! This policy was too large for us to fully analyze, and was truncated. Important policy details may be missing.</mj-text>
           {{ end }}
     	  </mj-column>
       </mj-section>
@@ -59,18 +77,31 @@
         <!-- ToS;DR Text -->
         <mj-section background-color="white" padding="16px">
   	      <mj-column>
-              <mj-text align="left" font-size="18px">Here's what <mj-button href="https://tosdr.org">ToS;DR</mj-button> had to say about {{ $.Company }}'s policies overall:
+              <mj-text align="left" font-size="18px">
+                Here's what <a href="https://tosdr.org">ToS;DR</a> had to say about {{ $.Company }}'s policies overall:
               </mj-text>
 
               <mj-spacer></mj-spacer>
 
               {{ range .Points }}
-                <!-- TODO: Set color based on {{ .Classification }} and use {{ .Source }} link-->
-                <mj-text align="left" font-size="18px">&emsp;- {{.Title}}</mj-text>
+                <mj-social align="left" font-size="14px" icon-padding="8px" line-height="1.1">
+                  <mj-social-element src="https://fineprint.help/{{.Classification}}.png">
+                    {{.Title}}
+                  </mj-social-element>
+                </mj-social>
               {{ end }}
   	      </mj-column>
         </mj-section>
       {{ end }}
     {{ end }}
+
+    <!-- LLM Disclaimer -->
+    <mj-section background-color="#f9fafb" padding="20px">
+      <mj-column>
+        <mj-text align="left" font-size="14px" color="#6b7280" line-height="1.5">
+          This summary was generated using Large Language Models (LLM), which can produce inaccurate information. Use this report as a guideline, but if you need to make important decisions based on this policy, please analyze it directly.
+        </mj-text>
+      </mj-column>
+    </mj-section>
   </mj-body>
 </mjml>

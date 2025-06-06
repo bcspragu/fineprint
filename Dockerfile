@@ -1,3 +1,5 @@
+# docker build -t registryext.bsprague.com/fineprint .
+
 # Build stage
 FROM golang:1.24.3-alpine AS builder
 
@@ -13,6 +15,7 @@ COPY claude/ claude/
 COPY diff/ diff/
 COPY htmlutil/ htmlutil/
 COPY postmark/ postmark/
+COPY ratelimit/ ratelimit/
 COPY templates/ templates/
 COPY tosdr/ tosdr/
 COPY webarchive/ webarchive/

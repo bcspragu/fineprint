@@ -8,9 +8,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"github.com/bcspragu/fineprint/htmlutil"
 	"strconv"
 	"time"
+
+	"github.com/bcspragu/fineprint/htmlutil"
 )
 
 type Client struct {
@@ -38,10 +39,21 @@ type Snapshot struct {
 }
 
 func (c *Client) GetSnapshots(targetURL string) ([]Snapshot, error) {
-	encodedURL := url.QueryEscape(targetURL)
-	apiURL := fmt.Sprintf("https://web.archive.org/cdx/search/cdx?url=%s&fl=timestamp,mimetype,statuscode,digest,length&output=json&fastLatest=true&limit=-10", encodedURL)
-
-	resp, err := c.HTTPClient.Get(apiURL)
+	v := url.Values{
+		"url":        {targetURL},
+		"fl":         {"timestamp,mimetype,statuscode,digest,length"},
+		"output":     {"json"},
+		"fastLatest": {"true"},
+		"limit":      {"-10"},
+	}
+	u := url.URL{
+		Scheme:   "https",
+		Host:     "web.archive.org",
+		Path:     "/cdx/search/cdx",
+		RawQuery: v.Encode(),
+	}
+	log.Printf("Getting snapshots via %q", u.String())
+	resp, err := c.HTTPClient.Get(u.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch snapshots: %w", err)
 	}
@@ -114,14 +126,14 @@ func formatTimestamp(ts time.Time) string {
 	return ts.Format("20060102150405")
 }
 
-func (c *Client) LoadSnapshot(originalURL string, timestamp time.Time) (string, error) {
+func (c *Client) LoadSnapshot(originalURL string, timestamp time.Time) (string, string, error) {
 	snapshotURL := fmt.Sprintf("https://web.archive.org/web/%s/%s", formatTimestamp(timestamp), originalURL)
 
 	log.Printf("Snapshot url %q", snapshotURL)
 
 	resp, err := c.HTTPClient.Get(snapshotURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to load snapshot: %w", err)
+		return "", "", fmt.Errorf("failed to load snapshot: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -130,15 +142,15 @@ func (c *Client) LoadSnapshot(originalURL string, timestamp time.Time) (string, 
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("snapshot request failed with status: %d", resp.StatusCode)
+		return "", "", fmt.Errorf("snapshot request failed with status: %d", resp.StatusCode)
 	}
 
 	textContent, err := htmlutil.ExtractText(newWaybackToolbarStripper(resp.Body))
 	if err != nil {
-		return "", fmt.Errorf("failed to extract text from HTML: %w", err)
+		return "", "", fmt.Errorf("failed to extract text from HTML: %w", err)
 	}
 
-	return textContent, nil
+	return textContent, snapshotURL, nil
 }
 
 func parseTimestamp(ts string) (time.Time, error) {

@@ -52,17 +52,17 @@ docker run -it --rm \
 
 ## TODO
 
-- [ ] Follow redirects
-- [ ] Add rate-limiting
+- [x] Follow redirects
+- [x] Add rate-limiting
   - Separately for sent emails and overall requests
     - Because not all requests will send emails, and emails aren't super expensive but LLMs can be
-- [ ] Let the user know when we had to trim the diff down
+- [x] Let the user know when we had to trim the diff down
   - Alternatively, chunk up the diff and reassemble it after
   - Though this could get arbitrarily expensive
-- [ ] Add a landing page for the site
+- [x] Add a landing page for the site
 - [ ] Deploy it
-- [ ] Add links to the previous and current policies
-- [ ] Add a warning that summaries may be wrong and you should always dig in if it's important
+- [x] Add links to the previous and current policies
+- [x] Add a warning that summaries may be wrong and you should always dig in if it's important
 - [x] Add LICENSE
 - [x] Fill out README
 - [x] Test end-to-end

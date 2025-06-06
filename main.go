@@ -153,7 +153,7 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received email from %s with subject: %s", email.From, email.Subject)
 
-	normalizedEmail := ratelimit.NormalizeEmail(email.From)
+	normalizedEmail := normalizeEmail(email.From)
 
 	if !h.rateLimiter.IsAllowed("classification:global", 250, time.Hour) {
 		log.Printf("Global classification rate limit exceeded")
@@ -222,7 +222,7 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 		emailDate = time.Now()
 	}
 
-	previousVersion, previousDate, err := h.loadPreviousLegalDocument(emailDate, policyResult.URL)
+	previousVersion, previousDate, snapshotURL, err := h.loadPreviousLegalDocument(emailDate, policyResult.URL)
 	if err != nil {
 		if errors.Is(err, errNoPreviousSnapshots) {
 			log.Printf("No previous snapshots found for %q", policyResult.URL.String())
@@ -235,7 +235,11 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("Failed to generate summary report: %v", err)
 		} else {
-			summaryReport = &templates.SummaryReport{Points: toSummaryPoints(summaryRes.Highlights)}
+			summaryReport = &templates.SummaryReport{
+				Points:    policyHighlightToSummaryPoints(summaryRes.Highlights),
+				PolicyURL: policyResult.URL.String(),
+				Trimmed:   summaryRes.Trimmed,
+			}
 		}
 	}
 
@@ -253,8 +257,11 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 			} else {
 				deltaReport = &templates.DeltaReport{
 					PrevDate: previousDate.Format(time.DateOnly),
+					PrevURL:  snapshotURL,
 					YourDate: emailDate.Format(time.DateOnly),
-					Points:   toSummaryPoints(diffSummary.Highlights),
+					YourURL:  policyResult.URL.String(),
+					Points:   diffHighlightToSummaryPoints(diffSummary.Highlights),
+					Trimmed:  diffSummary.Trimmed,
 				}
 			}
 		}
@@ -364,7 +371,8 @@ func (h *Handler) comeUpWithAPolicyURL(classification *claude.PolicyClassificati
 		}
 
 		// Now try to use the policy URL to get stuff
-		policyContents, err := getBody(policyURL)
+		// We follow redirects (common in emails with trackers) to get the actual final URL
+		policyContents, finalPolicyURL, err := getBody(policyURL)
 		if err != nil {
 			log.Printf("Strategy %q gave us a URL (%q) that we couldn't load: %v", st.name, policyURL.String(), err)
 			continue
@@ -375,7 +383,7 @@ func (h *Handler) comeUpWithAPolicyURL(classification *claude.PolicyClassificati
 		// time, even if we use the policy URL from the classification result.
 		if result == nil {
 			result = &PolicyLoadResult{
-				URL:          policyURL,
+				URL:          finalPolicyURL,
 				ResponseBody: policyContents,
 			}
 		}
@@ -433,6 +441,21 @@ func loadDocument(service *tosdr.SearchService, policyType string) (*Document, e
 		}
 	}
 
+	// If we found a specific document, limit our points to that one
+	// Otherwise we might have like a bajillion points
+	if documentURL != "" {
+		var points []tosdr.Point
+		for _, p := range serviceDetails.Points {
+			if p.Source == documentURL {
+				points = append(points, p)
+			}
+		}
+		// Only overwrite it if that worked.
+		if len(points) > 0 {
+			serviceDetails.Points = points
+		}
+	}
+
 	// If no specific match, try the first document
 	if documentURL == "" && len(serviceDetails.Documents) > 0 {
 		documentURL = serviceDetails.Documents[0].URL
@@ -446,7 +469,7 @@ func loadDocument(service *tosdr.SearchService, policyType string) (*Document, e
 
 var errNoPreviousSnapshots = errors.New("no previous snapshots found for given URL")
 
-func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *url.URL) (string, time.Time, error) {
+func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *url.URL) (string, time.Time, string, error) {
 	// Only consider snapshots from a week before the email.
 	afterTS := emailDate.AddDate(0, 0, -7)
 
@@ -456,11 +479,11 @@ func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *ur
 	dURL.RawQuery = ""
 	snapshots, err := h.webarchiveClient.GetSnapshots(dURL.String())
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to get snapshots: %w", err)
+		return "", time.Time{}, "", fmt.Errorf("failed to get snapshots: %w", err)
 	}
 
 	if len(snapshots) == 0 {
-		return "", time.Time{}, errNoPreviousSnapshots
+		return "", time.Time{}, "", errNoPreviousSnapshots
 	}
 
 	// Find the most recent snapshot that's older than our target date, a bit before
@@ -477,17 +500,17 @@ func (h *Handler) loadPreviousLegalDocument(emailDate time.Time, documentURL *ur
 	}
 
 	if bestSnapshot == nil {
-		return "", time.Time{}, errNoPreviousSnapshots
+		return "", time.Time{}, "", errNoPreviousSnapshots
 	}
 
 	log.Printf("Using snapshot from %s for URL %s", bestSnapshot.Timestamp, documentURL)
 
-	content, err := h.webarchiveClient.LoadSnapshot(dURL.String(), bestSnapshot.Timestamp)
+	content, snapshotURL, err := h.webarchiveClient.LoadSnapshot(dURL.String(), bestSnapshot.Timestamp)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to load snapshot: %w", err)
+		return "", time.Time{}, "", fmt.Errorf("failed to load snapshot: %w", err)
 	}
 
-	return content, bestSnapshot.Timestamp, nil
+	return content, bestSnapshot.Timestamp, snapshotURL, nil
 }
 
 func (h *Handler) maybeGetSearchService(companyName string) (*tosdr.SearchService, error) {
@@ -515,10 +538,10 @@ func (h *Handler) maybeGetSearchService(companyName string) (*tosdr.SearchServic
 	return &tosDRResults.Services[0], nil
 }
 
-func getBody(u *url.URL) (string, error) {
+func getBody(u *url.URL) (string, *url.URL, error) {
 	resp, err := http.Get(u.String())
 	if err != nil {
-		return "", fmt.Errorf("failed to load %q: %w", u.String(), err)
+		return "", nil, fmt.Errorf("failed to load %q: %w", u.String(), err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -528,16 +551,30 @@ func getBody(u *url.URL) (string, error) {
 
 	body, err := htmlutil.ExtractText(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to extract text from HTML body: %w", err)
+		return "", nil, fmt.Errorf("failed to extract text from HTML body: %w", err)
 	}
 
-	return body, nil
+	return body, resp.Request.URL, nil
 }
 
-func toSummaryPoints(points []string) []templates.SummaryPoint {
+func policyHighlightToSummaryPoints(points []claude.PolicyHighlight) []templates.SummaryPoint {
 	out := make([]templates.SummaryPoint, 0, len(points))
 	for _, p := range points {
-		out = append(out, templates.SummaryPoint{Text: p})
+		out = append(out, templates.SummaryPoint{
+			Text:           p.Description,
+			Classification: p.Classification,
+		})
+	}
+	return out
+}
+
+func diffHighlightToSummaryPoints(points []claude.DiffHighlight) []templates.SummaryPoint {
+	out := make([]templates.SummaryPoint, 0, len(points))
+	for _, p := range points {
+		out = append(out, templates.SummaryPoint{
+			Text:           p.Description,
+			Classification: p.Classification,
+		})
 	}
 	return out
 }
@@ -559,4 +596,26 @@ func parseEmailDate(dt string) (time.Time, error) {
 	}
 
 	return time.Time{}, rErr
+}
+
+func normalizeEmail(email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return email
+	}
+
+	localPart := parts[0]
+	domain := parts[1]
+
+	if domain == "gmail.com" || domain == "googlemail.com" {
+		localPart = strings.ReplaceAll(localPart, ".", "")
+		domain = "gmail.com"
+	}
+	if plusIdx := strings.Index(localPart, "+"); plusIdx != -1 {
+		localPart = localPart[:plusIdx]
+	}
+
+	return localPart + "@" + domain
 }

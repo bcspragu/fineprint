@@ -10,12 +10,25 @@ Here's what changed between {{ .PrevDate }} and {{ .YourDate }}:
 - {{.Text}}
 {{ end }}
 
+Prev Policy URL: {{ .PrevURL }}
+Current Policy URL: {{ .YourURL }}
+
+{{ if .Trimmed }}
+Heads up! The policy changes were too large for us to fully analyze, and were truncated. Important changes may be missing.
+{{ end }}
+
 {{- else with .SummaryReport -}}
 
 We couldn't find an older version of the policy for comparison, so here's a summary of the  {{ $.Company }}'s {{ $.PolicyType }}:
 
 {{ range .Points }}
 - {{.Text}}
+{{ end }}
+
+Policy URL: {{ .PolicyURL }}
+
+{{ if .Trimmed }}
+Heads up! This policy was too large for us to fully analyze, and was truncated. Important policy details may be missing.
 {{ end }}
 
 {{- end }}
@@ -25,8 +38,10 @@ We couldn't find an older version of the policy for comparison, so here's a summ
 Here's what ToS;DR (https://tosdr.org) had to say about {{ $.Company }}'s policies overall:
 
 {{ range .Points }}
-- {{.Title}}
+- [{{.Classification}}] {{.Title}}
 {{ end }}
 {{- end }}
 
 {{- end }}
+
+This summary was generated using Large Language Models (LLM), which can produce inaccurate information. Use this report as a guideline, but if you need to make important decisions based on this policy, please analyze it directly.

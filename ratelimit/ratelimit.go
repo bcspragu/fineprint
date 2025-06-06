@@ -1,14 +1,29 @@
 package ratelimit
 
 import (
-	"strings"
 	"sync"
 	"time"
 )
 
+type Time interface {
+	Now() time.Time
+	NewTicker(d time.Duration) *time.Ticker
+}
+
+type RealTimeProvider struct{}
+
+func (RealTimeProvider) Now() time.Time {
+	return time.Now()
+}
+
+func (RealTimeProvider) NewTicker(d time.Duration) *time.Ticker {
+	return time.NewTicker(d)
+}
+
 type RateLimiter struct {
 	mu     sync.RWMutex
 	limits map[string]*bucketSet
+	time   Time
 }
 
 type bucketSet struct {
@@ -18,8 +33,13 @@ type bucketSet struct {
 }
 
 func NewRateLimiter() *RateLimiter {
+	return NewRateLimiterWithTimeProvider(RealTimeProvider{})
+}
+
+func NewRateLimiterWithTimeProvider(timeProvider Time) *RateLimiter {
 	rl := &RateLimiter{
 		limits: make(map[string]*bucketSet),
+		time:   timeProvider,
 	}
 
 	go rl.cleanup()
@@ -28,10 +48,10 @@ func NewRateLimiter() *RateLimiter {
 }
 
 func (rl *RateLimiter) cleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := rl.time.NewTicker(5 * time.Minute)
 	for range ticker.C {
 		rl.mu.Lock()
-		now := time.Now()
+		now := rl.time.Now()
 		for key, bucket := range rl.limits {
 			cutoff := now.Add(-bucket.window)
 			var validRequests []time.Time
@@ -53,7 +73,7 @@ func (rl *RateLimiter) IsAllowed(key string, limit int, window time.Duration) bo
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	now := time.Now()
+	now := rl.time.Now()
 	cutoff := now.Add(-window)
 
 	bucket, exists := rl.limits[key]
@@ -91,7 +111,7 @@ func (rl *RateLimiter) GetCurrentCount(key string, limit int, window time.Durati
 		return 0
 	}
 
-	now := time.Now()
+	now := rl.time.Now()
 	cutoff := now.Add(-window)
 
 	count := 0
@@ -102,30 +122,4 @@ func (rl *RateLimiter) GetCurrentCount(key string, limit int, window time.Durati
 	}
 
 	return count
-}
-
-func NormalizeEmail(email string) string {
-	email = strings.ToLower(strings.TrimSpace(email))
-
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return email
-	}
-
-	localPart := parts[0]
-	domain := parts[1]
-
-	if domain == "gmail.com" || domain == "googlemail.com" {
-		localPart = strings.ReplaceAll(localPart, ".", "")
-		if plusIdx := strings.Index(localPart, "+"); plusIdx != -1 {
-			localPart = localPart[:plusIdx]
-		}
-		domain = "gmail.com"
-	} else {
-		if plusIdx := strings.Index(localPart, "+"); plusIdx != -1 {
-			localPart = localPart[:plusIdx]
-		}
-	}
-
-	return localPart + "@" + domain
 }
