@@ -7,7 +7,7 @@ package diff_test
 import (
 	"testing"
 
-	"postmark-inbound/diff"
+	"github.com/bcspragu/fineprint/diff"
 )
 
 func TestMerge(t *testing.T) {

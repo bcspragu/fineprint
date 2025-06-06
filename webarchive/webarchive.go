@@ -8,7 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"postmark-inbound/htmlutil"
+	"github.com/bcspragu/fineprint/htmlutil"
 	"strconv"
 	"time"
 )

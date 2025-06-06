@@ -1,4 +1,4 @@
-module postmark-inbound
+module github.com/bcspragu/fineprint
 
 go 1.24.3
 

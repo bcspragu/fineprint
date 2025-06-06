@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"postmark-inbound/diff/difftest"
+	"github.com/bcspragu/fineprint/diff/difftest"
 )
 
 func TestVerifyUnified(t *testing.T) {

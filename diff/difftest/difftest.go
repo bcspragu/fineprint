@@ -17,7 +17,7 @@ package difftest
 import (
 	"testing"
 
-	"postmark-inbound/diff"
+	"github.com/bcspragu/fineprint/diff"
 )
 
 const (

@@ -7,8 +7,8 @@ package myers_test
 import (
 	"testing"
 
-	"postmark-inbound/diff/difftest"
-	"postmark-inbound/diff/myers"
+	"github.com/bcspragu/fineprint/diff/difftest"
+	"github.com/bcspragu/fineprint/diff/myers"
 )
 
 func TestDiff(t *testing.T) {

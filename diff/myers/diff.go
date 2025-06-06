@@ -8,7 +8,7 @@ package myers
 import (
 	"strings"
 
-	"postmark-inbound/diff"
+	"github.com/bcspragu/fineprint/diff"
 )
 
 // Sources:

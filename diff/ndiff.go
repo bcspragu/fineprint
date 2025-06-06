@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"unicode/utf8"
 
-	"postmark-inbound/diff/lcs"
+	"github.com/bcspragu/fineprint/diff/lcs"
 )
 
 // Strings computes the differences between two strings.

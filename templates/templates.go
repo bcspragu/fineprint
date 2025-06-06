@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/template"
 
-	"postmark-inbound/claude"
-	"postmark-inbound/tosdr"
+	"github.com/bcspragu/fineprint/claude"
+	"github.com/bcspragu/fineprint/tosdr"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"

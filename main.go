@@ -16,14 +16,16 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/peterbourgon/ff/v3"
 
-	"postmark-inbound/claude"
-	"postmark-inbound/diff"
-	"postmark-inbound/htmlutil"
-	"postmark-inbound/postmark"
-	"postmark-inbound/templates"
-	"postmark-inbound/tosdr"
-	"postmark-inbound/webarchive"
 	"slices"
+
+	"github.com/bcspragu/fineprint/claude"
+	"github.com/bcspragu/fineprint/diff"
+	"github.com/bcspragu/fineprint/htmlutil"
+	"github.com/bcspragu/fineprint/postmark"
+	"github.com/bcspragu/fineprint/ratelimit"
+	"github.com/bcspragu/fineprint/templates"
+	"github.com/bcspragu/fineprint/tosdr"
+	"github.com/bcspragu/fineprint/webarchive"
 )
 
 func main() {
@@ -60,6 +62,7 @@ func run(args []string) error {
 	}
 
 	webarchiveClient := webarchive.NewClient(*archiveAccessKey, *archiveSecretKey)
+	rateLimiter := ratelimit.NewRateLimiter()
 
 	if *replyFromEmail == "" {
 		return errors.New("REPLY_FROM_EMAIL not set, which is required for email sending")
@@ -69,6 +72,7 @@ func run(args []string) error {
 		replyFromEmail:   *replyFromEmail,
 		anthropicAPIKey:  *anthropicAPIKey,
 		webarchiveClient: webarchiveClient,
+		rateLimiter:      rateLimiter,
 
 		postmarkToken:           *postmarkToken,
 		postmarkWebhookUsername: *postmarkWebhookUsername,
@@ -88,6 +92,7 @@ type Handler struct {
 	replyFromEmail   string
 	anthropicAPIKey  string
 	webarchiveClient *webarchive.Client
+	rateLimiter      *ratelimit.RateLimiter
 
 	postmarkToken           string
 	postmarkWebhookUsername string
@@ -148,6 +153,14 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received email from %s with subject: %s", email.From, email.Subject)
 
+	normalizedEmail := ratelimit.NormalizeEmail(email.From)
+
+	if !h.rateLimiter.IsAllowed("classification:global", 250, time.Hour) {
+		log.Printf("Global classification rate limit exceeded")
+		http.Error(w, "Service temporarily unavailable - too many requests", http.StatusServiceUnavailable)
+		return
+	}
+
 	classification, err := claude.ClassifyPolicyChange(h.anthropicAPIKey, email.Subject, email.TextBody, email.HtmlBody)
 	if err != nil {
 		log.Printf("Error classifying email: %v", err)
@@ -161,6 +174,18 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 	if !classification.IsPolicyChange {
 		log.Printf("Email is not a policy change notification, ignoring")
 		textResponse(w, "Email processed - not a policy change")
+		return
+	}
+
+	if !h.rateLimiter.IsAllowed("user:"+normalizedEmail, 5, time.Hour) {
+		log.Printf("Per-user rate limit exceeded for %s", normalizedEmail)
+		textResponse(w, "Rate limit exceeded - please try again later")
+		return
+	}
+
+	if !h.rateLimiter.IsAllowed("analysis:global", 100, time.Hour) {
+		log.Printf("Global analysis rate limit exceeded")
+		textResponse(w, "Service temporarily unavailable - too many requests")
 		return
 	}
 
@@ -250,6 +275,12 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subject := fmt.Sprintf("Policy Change Summary: %s", classification.Company)
+
+	if !h.rateLimiter.IsAllowed("email:global", 1000, time.Hour) {
+		log.Printf("Global email sending rate limit exceeded")
+		textResponse(w, "Service temporarily unavailable - email sending limit reached")
+		return
+	}
 
 	messageID := postmark.GetMessageIDFromHeaders(&email)
 	err = postmark.SendEmailWithThreading(h.postmarkToken, h.replyFromEmail, email.From, subject, emailContent.TextBody, emailContent.HTMLBody, messageID, messageID)

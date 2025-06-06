@@ -15,8 +15,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"postmark-inbound/diff"
-	"postmark-inbound/diff/difftest"
+	"github.com/bcspragu/fineprint/diff"
+	"github.com/bcspragu/fineprint/diff/difftest"
 )
 
 func TestApply(t *testing.T) {
