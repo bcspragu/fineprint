@@ -39,14 +39,18 @@ type InboundEmail struct {
 }
 
 type EmailRequest struct {
-	From          string `json:"From"`
-	To            string `json:"To"`
-	Subject       string `json:"Subject"`
-	TextBody      string `json:"TextBody,omitempty"`
-	HtmlBody      string `json:"HtmlBody,omitempty"`
-	MessageStream string `json:"MessageStream,omitempty"`
-	InReplyTo     string `json:"InReplyTo,omitempty"`
-	References    string `json:"References,omitempty"`
+	From          string   `json:"From"`
+	To            string   `json:"To"`
+	Subject       string   `json:"Subject"`
+	TextBody      string   `json:"TextBody,omitempty"`
+	HtmlBody      string   `json:"HtmlBody,omitempty"`
+	MessageStream string   `json:"MessageStream,omitempty"`
+	Headers       []Header `json:"Headers,omitempty"`
+}
+
+type Header struct {
+	Name  string `json:"Name"`
+	Value string `json:"Value"`
 }
 
 type EmailResponse struct {
@@ -82,8 +86,10 @@ func SendEmailWithThreading(serverToken, from, to, subject, textBody, htmlBody, 
 		TextBody:      textBody,
 		HtmlBody:      htmlBody,
 		MessageStream: "outbound",
-		InReplyTo:     inReplyTo,
-		References:    references,
+		Headers: []Header{
+			{Name: "In-Reply-To", Value: inReplyTo},
+			{Name: "References", Value: references},
+		},
 	}
 
 	jsonData, err := json.Marshal(emailReq)
