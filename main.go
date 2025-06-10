@@ -250,6 +250,8 @@ func (h *Handler) handleInboundEmail(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to diff two policy versions (generally shouldn't happen!): %v", err)
 		}
 
+		// TODO: Consider loading an older policy if there's no diff here.
+		// Or TODO: Let the user know there was no diff
 		if policyDiff != "" {
 			diffSummary, err := claude.GenerateDiffReport(h.anthropicAPIKey, classification, policyDiff)
 			if err != nil {
@@ -583,6 +585,7 @@ func parseEmailDate(dt string) (time.Time, error) {
 	formats := []string{
 		"Mon, 02 Jan 2006 15:04:05 -0700", // is time.RFC1123Z, but we put it here to show all the permutations we try.
 		"Mon, 2 Jan 2006 15:04:05 -0700",
+		"9 Jan 2006 15:04:05 -0700 (MST)",
 	}
 
 	var rErr error
