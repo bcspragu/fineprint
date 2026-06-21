@@ -2,7 +2,7 @@
 
 
 go run . \
-  --reply-from-email=app@fineprint.help \
+  --reply-from-email=app@fineprint.bsprague.com \
   --postmark-server-token=$(pass show postmark/server-token) \
   --postmark-webhook-username=$(pass show postmark/webhook-username) \
   --postmark-webhook-password=$(pass show postmark/webhook-password) \

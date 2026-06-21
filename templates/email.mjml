@@ -11,8 +11,8 @@
     <mj-section>
       <mj-column>
 
-        <mj-image width="100px" src="https://fineprint.help/fineprint.png"></mj-image>
-        <mj-text align="center" font-size="28px">Fineprint.help</mj-text>
+        <mj-image width="100px" src="https://fineprint.bsprague.com/fineprint.png"></mj-image>
+        <mj-text align="center" font-size="28px">Fineprint</mj-text>
 
         <mj-divider border-color="#a0a0a0" border-width="2px"></mj-divider>
 
@@ -33,7 +33,7 @@
   
           {{ range .Points }}
             <mj-social align="left" font-size="14px" icon-padding="8px" line-height="1.1">
-              <mj-social-element src="https://fineprint.help/{{.Classification}}.png">
+              <mj-social-element src="https://fineprint.bsprague.com/{{.Classification}}.png">
                 {{.Text}}
               </mj-social-element>
             </mj-social>
@@ -57,7 +57,7 @@
 
           {{ range .Points }}
             <mj-social align="left" font-size="14px" icon-padding="8px" line-height="1.1">
-              <mj-social-element src="https://fineprint.help/{{.Classification}}.png">
+              <mj-social-element src="https://fineprint.bsprague.com/{{.Classification}}.png">
                 {{.Text}}
               </mj-social-element>
             </mj-social>
@@ -85,7 +85,7 @@
 
               {{ range .Points }}
                 <mj-social align="left" font-size="14px" icon-padding="8px" line-height="1.1">
-                  <mj-social-element src="https://fineprint.help/{{.Classification}}.png">
+                  <mj-social-element src="https://fineprint.bsprague.com/{{.Classification}}.png">
                     {{.Title}}
                   </mj-social-element>
                 </mj-social>

@@ -2,7 +2,7 @@
 
 A tool for determining what has changed in a company's legal agreement (ToS, Privacy Policy, etc), built for [Postmark's Inbox Innovators challenge](https://postmarkapp.com/blog/announcing-the-postmark-challenge-inbox-innovators%20)
 
-More usage details at [Fineprint.help](https://fineprint.help)
+More usage details at [Fineprint](https://fineprint.bsprague.com)
 
 ## Local Testing
 
@@ -43,7 +43,7 @@ docker build -t fineprint .
 # Run it, pulling secrets from `pass` in this example
 docker run -it --rm \
   -p 8080:8080 fineprint \
-  --reply-from-email=app@fineprint.help \
+  --reply-from-email=app@fineprint.bsprague.com \
   --postmark-server-token=$(pass show postmark/server-token) \
   --postmark-webhook-username=$(pass show postmark/webhook-username) \
   --postmark-webhook-password=$(pass show postmark/webhook-password) \

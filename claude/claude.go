@@ -111,7 +111,7 @@ func GenerateSummaryReport(apiKey string, pc *PolicyClassification, textBody str
 `, pc.Company, pc.PolicyURL, pc.PolicyType, textBody)
 
 	reqBody := &Request{
-		Model:     "claude-sonnet-4-20250514",
+		Model:     "claude-sonnet-4-6",
 		MaxTokens: 10000,
 		Tools: []Tool{
 			{
@@ -191,7 +191,7 @@ func GenerateDiffReport(apiKey string, pc *PolicyClassification, unifiedDiff str
 `, pc.Company, pc.PolicyURL, pc.PolicyType, unifiedDiff)
 
 	reqBody := &Request{
-		Model:     "claude-sonnet-4-20250514",
+		Model:     "claude-sonnet-4-6",
 		MaxTokens: 10000,
 		Tools: []Tool{
 			{
@@ -279,7 +279,7 @@ func ClassifyPolicyChange(apiKey, subject, textBody, htmlBody string) (*PolicyCl
 %s`, subject, content)
 
 	reqBody := &Request{
-		Model:     "claude-3-5-haiku-20241022",
+		Model:     "claude-haiku-4-5-20251001",
 		MaxTokens: 600,
 		Tools: []Tool{
 			{
